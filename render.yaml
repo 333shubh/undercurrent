@@ -67,5 +67,10 @@ services:
       - key: X_BEARER_TOKEN
         sync: false
 
+      # Public server invite, shown as the join button on the landing page.
+      # Unset renders a disabled placeholder rather than a dead link.
+      - key: DISCORD_INVITE_URL
+        sync: false
+
       - key: LOG_LEVEL
         value: INFO
