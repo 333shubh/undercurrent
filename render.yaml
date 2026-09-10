@@ -26,8 +26,13 @@ services:
     autoDeploy: true
 
     envVars:
+      # Also pinned in .python-version, which Render reads directly. Both are
+      # set because the interpreter version decides whether rapidfuzz installs
+      # from a wheel or tries to compile: the first deploy here failed because
+      # a newer Python had no matching wheel and the source build broke inside
+      # scikit-build-core.
       - key: PYTHON_VERSION
-        value: "3.12"
+        value: "3.12.11"
 
       # --- required ---
       - key: SUPABASE_URL
