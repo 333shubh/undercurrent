@@ -6,92 +6,255 @@
 <title>Undercurrent</title>
 <meta name="description" content="A daily research radar. Eight public sources, deduped and scored, one digest a day in Discord.">
 <style>
-  /* Deliberately plain: system monospace, white ground, black text.
-     No gradients, no cards, no glow, no chat bubbles, no assistant voice. */
-  :root { color-scheme: light; }
+  /* Monospace, white, and almost nothing else. The motion is the only
+     decoration: short, eased, and never blocking the content. Everything
+     animated is visible by default and only *then* hidden by script, so the
+     page reads fine with JavaScript off. */
+
+  :root {
+    color-scheme: light;
+    --ink: #111111;
+    --dim: #6e6e73;
+    --line: #e8e8ed;
+    --bg: #ffffff;
+    /* Apple's easing: fast out, long gentle settle. */
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
   * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
   body {
     margin: 0;
-    background: #ffffff;
-    color: #111111;
+    background: var(--bg);
+    color: var(--ink);
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
     font-size: 14px;
-    line-height: 1.65;
+    line-height: 1.7;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
-  main { max-width: 620px; margin: 0 auto; padding: 72px 24px 96px; }
-  h1 { font-size: 14px; font-weight: 700; margin: 0 0 4px; letter-spacing: 0.02em; }
-  .sub { color: #767676; margin: 0 0 40px; }
+
+  main { max-width: 640px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---------------------------------------------------------- hero ---- */
+
+  .hero {
+    min-height: 78vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 80px 0 40px;
+  }
+  .mark {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.34em;
+    margin: 0 0 22px;
+  }
+  .lede {
+    font-size: 21px;
+    line-height: 1.45;
+    font-weight: 400;
+    margin: 0 0 18px;
+    letter-spacing: -0.01em;
+  }
+  .hero .sub { color: var(--dim); margin: 0; max-width: 46ch; }
+
+  .scroll-hint {
+    margin-top: 56px;
+    font-size: 11px;
+    color: var(--dim);
+    letter-spacing: 0.14em;
+  }
+  .scroll-hint span {
+    display: inline-block;
+    animation: drift 2.6s var(--ease) infinite;
+  }
+  @keyframes drift {
+    0%, 100% { transform: translateY(0); opacity: 0.5; }
+    50%      { transform: translateY(4px); opacity: 1; }
+  }
+
+  /* ------------------------------------------------------- sections ---- */
+
+  section { padding: 60px 0; border-top: 1px solid var(--line); }
+
   h2 {
-    font-size: 12px; font-weight: 700; margin: 36px 0 12px;
-    text-transform: uppercase; letter-spacing: 0.08em;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--dim);
+    margin: 0 0 22px;
   }
-  p { margin: 0 0 14px; }
-  ul { margin: 0 0 14px; padding-left: 18px; }
-  li { margin: 0 0 6px; }
-  .muted { color: #767676; }
-  hr { border: 0; border-top: 1px solid #e5e5e5; margin: 40px 0; }
+
+  p { margin: 0 0 16px; max-width: 58ch; }
+  p:last-child { margin-bottom: 0; }
+
+  .sources { color: var(--ink); line-height: 2.4; }
+  .sources i {
+    font-style: normal;
+    border: 1px solid var(--line);
+    padding: 5px 10px;
+    margin: 0 4px 0 0;
+    white-space: nowrap;
+    transition: border-color 0.45s var(--ease), transform 0.45s var(--ease);
+    display: inline-block;
+  }
+  .sources i:hover { border-color: var(--ink); transform: translateY(-2px); }
+
+  ul { margin: 0; padding: 0; list-style: none; }
+  li {
+    padding: 13px 0;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    gap: 14px;
+  }
+  li:last-child { border-bottom: 0; }
+  li b { font-weight: 400; color: var(--dim); flex: 0 0 auto; }
 
   pre.sample {
-    background: #fafafa; border: 1px solid #e5e5e5; padding: 14px;
-    overflow-x: auto; font-size: 12px; line-height: 1.6; margin: 0 0 14px;
-    white-space: pre-wrap; word-break: break-word;
+    background: #fbfbfd;
+    border: 1px solid var(--line);
+    padding: 20px;
+    overflow-x: auto;
+    font-size: 12px;
+    line-height: 1.75;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #1d1d1f;
   }
 
+  /* ----------------------------------------------------------- join ---- */
+
+  .join-section { text-align: left; padding: 76px 0 100px; }
+
   .join {
-    display: inline-block; padding: 12px 22px; margin: 0 0 12px;
-    border: 1px solid #111111; background: #111111; color: #ffffff;
-    text-decoration: none; font: inherit;
+    display: inline-block;
+    padding: 14px 26px;
+    border: 1px solid var(--ink);
+    background: var(--ink);
+    color: #ffffff;
+    text-decoration: none;
+    font: inherit;
+    position: relative;
+    overflow: hidden;
+    transition: color 0.5s var(--ease), transform 0.5s var(--ease);
+    will-change: transform;
   }
-  .join:hover { background: #ffffff; color: #111111; }
-  .join[aria-disabled="true"] {
-    background: #ffffff; color: #767676; border-color: #cccccc;
+  .join::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: #ffffff;
+    transform: scaleY(0);
+    transform-origin: bottom;
+    transition: transform 0.5s var(--ease);
+    z-index: 0;
+  }
+  .join span { position: relative; z-index: 1; }
+  .join:hover { color: var(--ink); transform: translateY(-2px); }
+  .join:hover::after { transform: scaleY(1); }
+  .join:active { transform: translateY(0); }
+
+  .join.disabled {
+    background: #ffffff;
+    color: var(--dim);
+    border-color: var(--line);
     pointer-events: none;
   }
 
-  .note { font-size: 12px; color: #767676; margin: 0; }
-  a { color: #111111; }
-  a:hover { text-decoration: none; }
+  .note { font-size: 12px; color: var(--dim); margin: 20px 0 0; max-width: 52ch; }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding: 28px 0 48px;
+    font-size: 11px;
+    color: var(--dim);
+  }
+
+  /* ------------------------------------------------------- reveals ---- */
+  /* Applied by script only, so no-JS visitors never see hidden content. */
+
+  .js [data-reveal] {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  .js [data-reveal].shown {
+    opacity: 1;
+    transform: none;
+    transition: opacity 0.9s var(--ease), transform 0.9s var(--ease);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .js [data-reveal],
+    .js [data-reveal].shown { opacity: 1; transform: none; transition: none; }
+    .scroll-hint span { animation: none; }
+    .join, .join::after, .sources i { transition: none; }
+  }
+
+  @media (max-width: 520px) {
+    .hero { min-height: 70vh; }
+    .lede { font-size: 18px; }
+    li { flex-direction: column; gap: 2px; }
+  }
 </style>
 </head>
 <body>
 <main>
 
-  <h1>UNDERCURRENT</h1>
-  <p class="sub">A daily research radar.</p>
+  <header class="hero">
+    <p class="mark" data-reveal>UNDERCURRENT</p>
+    <p class="lede" data-reveal>A daily research radar.</p>
+    <p class="sub" data-reveal>
+      Eight public sources, read every morning. One short digest of what
+      actually changed.
+    </p>
+    <p class="scroll-hint" data-reveal><span>↓</span></p>
+  </header>
 
-  <p>
-    Every morning it reads eight public sources, throws away what it has
-    already seen, and posts one short digest of what actually changed.
-  </p>
-  <p>
-    It is not a news feed. It tracks themes across days, so the interesting
-    part is not that something was published &mdash; it is that unrelated
-    sources started pointing the same direction at once.
-  </p>
+  <section>
+    <h2 data-reveal>What it is</h2>
+    <p data-reveal>
+      Not a news feed. It keeps memory across days and tracks themes over time,
+      so the interesting part is not that something was published &mdash; it is
+      that unrelated sources started pointing the same direction at once.
+    </p>
+    <p data-reveal>
+      Duplicates are collapsed before anything is counted, so the same story
+      arriving twice raises confidence without pretending to be two findings.
+    </p>
+  </section>
 
-  <h2>What it reads</h2>
-  <p class="muted">
-    Hacker News &middot; arXiv &middot; GitHub &middot; Substack &middot;
-    Medium &middot; daily.dev &middot; Reddit &middot; X
-  </p>
+  <section>
+    <h2 data-reveal>What it reads</h2>
+    <p class="sources" data-reveal>
+      <i>Hacker News</i><i>arXiv</i><i>GitHub</i><i>Substack</i><i>Medium</i><i>daily.dev</i><i>Reddit</i><i>X</i>
+    </p>
+  </section>
 
-  <h2>What it posts</h2>
-  <ul>
-    <li>Openings worth a look, and why now</li>
-    <li>Open research questions</li>
-    <li>Papers worth reading</li>
-    <li>Trends with the evidence behind them</li>
-    <li>Small builds that would test an idea</li>
-  </ul>
-  <p>
-    Every claim carries links to the sources it came from. Anything resting on
-    a single source says so. Sections are left empty on quiet days rather than
-    padded.
-  </p>
+  <section>
+    <h2 data-reveal>What it posts</h2>
+    <ul>
+      <li data-reveal><b>01</b> Openings worth a look, and why now</li>
+      <li data-reveal><b>02</b> Open research questions</li>
+      <li data-reveal><b>03</b> Papers worth reading</li>
+      <li data-reveal><b>04</b> Trends, with the evidence behind them</li>
+      <li data-reveal><b>05</b> Small builds that would test an idea</li>
+    </ul>
+    <p class="note" data-reveal>
+      Every claim links to its sources. Anything resting on a single source
+      says so. Quiet days leave sections empty rather than padding them.
+    </p>
+  </section>
 
-  <h2>Sample</h2>
-  <pre class="sample">UNDERCURRENT — 2026-09-10
+  <section>
+    <h2 data-reveal>A recent one</h2>
+    <pre class="sample" data-reveal>UNDERCURRENT — 2026-09-10
 
 Emerging Trends
 - llm agent memory management — four items from
@@ -101,24 +264,60 @@ Emerging Trends
 Undercurrent Signals
 - New theme: ai data center power management,
   4 signals across 2 independent sources</pre>
+  </section>
 
-  <hr>
+  <section class="join-section">
+    <h2 data-reveal>Read it</h2>
+    {% if invite_url %}
+      <p data-reveal>
+        <a class="join" href="{{ invite_url }}" rel="noopener noreferrer" target="_blank">
+          <span>Join the Discord →</span>
+        </a>
+      </p>
+      <p class="note" data-reveal>
+        One post a day, in one channel. Nothing to sign up for, no address to
+        hand over, nothing sent to you directly.
+      </p>
+    {% else %}
+      <p data-reveal><span class="join disabled"><span>Invite link coming soon</span></span></p>
+      <p class="note" data-reveal>The digest posts daily to a Discord channel.</p>
+    {% endif %}
+  </section>
 
-  <h2>Read it</h2>
-  {% if invite_url %}
-    <p><a class="join" href="{{ invite_url }}" rel="noopener noreferrer" target="_blank">Join the Discord</a></p>
-    <p class="note">
-      One post a day, in one channel. No account needed beyond Discord itself,
-      nothing to sign up for, and nothing is sent to you directly.
-    </p>
-  {% else %}
-    <p><span class="join" aria-disabled="true">Invite link coming soon</span></p>
-    <p class="note">
-      The digest posts daily to a Discord channel. The invite is not published
-      yet.
-    </p>
-  {% endif %}
+  <footer data-reveal>Undercurrent</footer>
 
 </main>
+
+<script>
+  // Progressive enhancement: mark the document as script-capable only now, so
+  // the reveal styles above can never hide content from a visitor without JS.
+  document.documentElement.classList.add('js');
+
+  (function () {
+    var items = document.querySelectorAll('[data-reveal]');
+    var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (reduced || !('IntersectionObserver' in window)) {
+      items.forEach(function (el) { el.classList.add('shown'); });
+      return;
+    }
+
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        // Stagger within a group so lists cascade instead of snapping in.
+        var siblings = Array.prototype.slice.call(
+          entry.target.parentNode.querySelectorAll('[data-reveal]')
+        );
+        var i = Math.max(0, siblings.indexOf(entry.target));
+        entry.target.style.transitionDelay = Math.min(i * 70, 350) + 'ms';
+        entry.target.classList.add('shown');
+        observer.unobserve(entry.target);
+      });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+
+    items.forEach(function (el) { observer.observe(el); });
+  })();
+</script>
 </body>
 </html>
