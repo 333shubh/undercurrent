@@ -15,6 +15,7 @@ trigram ratio, which handles both reworded headlines and typo'd titles.
 from __future__ import annotations
 
 import hashlib
+import html
 import re
 from datetime import datetime, timezone
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -55,11 +56,21 @@ def collapse_ws(text: str | None) -> str:
     return _WS_RE.sub(" ", (text or "")).strip()
 
 
+_FEED_BOILERPLATE_RE = re.compile(
+    r"(continue reading on [^»\.]{0,40}»?|read more on substack|"
+    r"click here to read.*$|subscribe now\b.*$)",
+    re.IGNORECASE,
+)
+
+
 def clean_text(text: str | None, limit: int = 1200) -> str:
-    """Strip HTML-ish junk out of RSS bodies and clamp length."""
+    """Strip HTML, decode entities, drop feed boilerplate, clamp length."""
     s = collapse_ws(text)
+    s = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", s, flags=re.IGNORECASE | re.DOTALL)
     s = re.sub(r"<[^>]+>", " ", s)
-    s = re.sub(r"&(nbsp|amp|quot|#39|lt|gt);", " ", s)
+    s = html.unescape(s)
+    s = html.unescape(s)  # feeds double-escape often enough to be worth a 2nd pass
+    s = _FEED_BOILERPLATE_RE.sub(" ", s)
     s = collapse_ws(s)
     return s[:limit]
 
