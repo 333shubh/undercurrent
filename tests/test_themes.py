@@ -56,6 +56,89 @@ class TestMatching:
         assert index.match("") == (None, 0.0)
 
 
+class TestLabelSimilarityCalibration:
+    """The evidence behind THEME_MATCH_THRESHOLD.
+
+    Labels here are real ones produced by a 447-item run. The threshold exists
+    to separate these two groups; if a change to the similarity function or the
+    threshold collapses the gap, this fails and says so.
+    """
+
+    SHOULD_MERGE = [
+        ("huggingface attack postmortem", "huggingface hack postmortem"),
+        ("ai coding agent coordination", "ai coding agents"),
+        ("open model licensing", "open model licences"),
+        ("warehouse robotics automation", "warehouse robotics"),
+        ("llm release", "llm releases"),
+        ("ai governance enforcement", "ai governance"),
+    ]
+    MUST_NOT_MERGE = [
+        ("ai governance enforcement", "warehouse robotics automation"),
+        ("open model licensing", "high bandwidth memory"),
+        ("llm inference cost", "grid interconnection queues"),
+        ("ai model security", "ai coding agents"),
+        ("humanoid robotics", "ai governance"),
+        ("battery recycling", "llm release"),
+    ]
+
+    def _index(self):
+        return th.ThemeIndex([])
+
+    def test_variants_of_one_topic_clear_the_threshold(self):
+        index = self._index()
+        for a, b in self.SHOULD_MERGE:
+            score = index.label_similarity(a, b)
+            assert score >= th.THEME_MATCH_THRESHOLD, f"{a!r} ~ {b!r} scored {score}"
+
+    def test_distinct_topics_stay_below_the_threshold(self):
+        index = self._index()
+        for a, b in self.MUST_NOT_MERGE:
+            score = index.label_similarity(a, b)
+            assert score < th.THEME_MATCH_THRESHOLD, f"{a!r} ~ {b!r} scored {score}"
+
+    def test_the_two_classes_remain_clearly_separated(self):
+        """A shrinking margin means the next tuning change is guesswork."""
+        index = self._index()
+        weakest_true = min(index.label_similarity(a, b) for a, b in self.SHOULD_MERGE)
+        strongest_false = max(index.label_similarity(a, b) for a, b in self.MUST_NOT_MERGE)
+        assert weakest_true > strongest_false * 3, (
+            f"margin collapsed: weakest true match {weakest_true:.3f} vs "
+            f"strongest false {strongest_false:.3f}"
+        )
+
+    def test_identical_labels_match_exactly(self):
+        assert self._index().label_similarity("ai governance", "ai governance") == 1.0
+
+    def test_empty_labels_do_not_match(self):
+        index = self._index()
+        assert index.label_similarity(None, "ai") == 0.0
+        assert index.label_similarity("", "") == 0.0
+
+
+class TestThemeVocabulary:
+    def test_returns_active_themes_by_momentum(self, theme_row):
+        index = th.ThemeIndex([
+            theme_row("low", momentum_score=0.1),
+            theme_row("high", momentum_score=9.0),
+            theme_row("mid", momentum_score=3.0),
+        ])
+        assert index.vocabulary() == ["high", "mid", "low"]
+
+    def test_excludes_dormant_themes(self, theme_row):
+        index = th.ThemeIndex([
+            theme_row("alive", momentum_score=1.0),
+            theme_row("gone", momentum_score=5.0, status="dormant"),
+        ])
+        assert index.vocabulary() == ["alive"]
+
+    def test_respects_the_limit(self, theme_row):
+        index = th.ThemeIndex([theme_row(f"t{i}", momentum_score=i) for i in range(30)])
+        assert len(index.vocabulary(limit=5)) == 5
+
+    def test_empty_index_yields_empty_vocabulary(self):
+        assert th.ThemeIndex([]).vocabulary() == []
+
+
 class TestLinkage:
     def test_llm_label_creates_a_theme(self, index):
         stats = th.link(index, [signal("reddit", "x", label="grid interconnection queues")])

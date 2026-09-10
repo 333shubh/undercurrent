@@ -95,6 +95,21 @@ def collect() -> CollectorResult:
                 payload = _search(query)
             except requests.HTTPError as exc:
                 status = exc.response.status_code if exc.response is not None else "?"
+                if status == 402:
+                    # X now meters reads as credits. When the project's free
+                    # allowance is spent every endpoint returns 402 "credits
+                    # depleted" -- including a bare user lookup -- so this is a
+                    # configuration fact, not a transient failure. Reported as a
+                    # skip so it does not mark every run "partial" forever and
+                    # does not bury real source errors under a daily false alarm.
+                    result.skipped_reason = (
+                        "X API credits depleted -- v2 reads are not available on "
+                        "the current (free) access level. Costs money to restore; "
+                        "SPEC.md Section 9 targets $0/month."
+                    )
+                    result.errors.clear()
+                    log.warning("x collector skipped: %s", result.skipped_reason)
+                    return
                 result.errors.append(f"{query}: HTTP {status}")
                 if status in (401, 403, 429):
                     # Auth failure or cap exhaustion: stop, do not spend more reads.

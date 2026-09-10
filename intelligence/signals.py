@@ -76,6 +76,11 @@ _TYPE_MARKERS: list[tuple[str, tuple[str, ...]]] = [
 # Sources whose items are research/launch by construction -- no need to guess.
 _SOURCE_DEFAULT_TYPE = {"arxiv": "research", "github": "launch"}
 
+# How many existing theme names to show the extractor. Enough to cover the
+# active vocabulary, small enough that it does not crowd out the items in the
+# prompt -- each entry is only a few words.
+MAX_THEME_VOCAB = 60
+
 
 @dataclass
 class Signal:
@@ -262,10 +267,15 @@ _EXTRACTION_INSTRUCTIONS = """For each numbered item below, return one JSON obje
 Return ONLY JSON of the form {"items": [...]}, with one entry per input item:
   "i":        the item number, integer
   "type":     one of pain | launch | research | capability | traction | discussion | noise
-  "theme":    2-5 word lowercase noun phrase naming the underlying topic, stable
-              enough that a different article on the same topic would get the same
-              phrase (e.g. "on-device llm inference", "grid interconnection queues").
-              null if the item is noise.
+  "theme":    the DURABLE topic area this belongs to, as a 2-4 word lowercase noun
+              phrase. Reuse a phrase from the "Known themes" list whenever the item
+              plausibly belongs to one -- matching an existing theme is strongly
+              preferred over coining a new one.
+              Name the ongoing subject area, NOT this specific event: use
+              "ai model security" not "huggingface hack postmortem", "humanoid
+              robotics" not "unitree g1 demo video". If two items are about the
+              same subject from different angles they MUST get the identical
+              phrase. null if the item is noise.
   "problem":  one sentence naming the concrete unmet need, ONLY if the item states
               or clearly implies one. null otherwise. Do not invent a problem.
   "entities": up to 4 orgs/products/labs/people actually named in the text, as
@@ -295,7 +305,33 @@ def _fallback_classify(signal: Signal) -> None:
     signal.theme_label = None
 
 
-def _batch_prompt(batch: list[Signal]) -> str:
+def _batch_prompt(batch: list[Signal], known_themes: list[str] | None = None) -> str:
+    """Build one extraction prompt, seeded with the theme vocabulary we already
+    hold.
+
+    Without this the model coins a fresh label per article and memory shatters
+    into single-item themes -- measured on a real run, 447 items produced 75
+    themes and zero cross-source convergence, including "huggingface attack
+    postmortem" and "huggingface hack postmortem" as separate themes. Showing it
+    the existing vocabulary is what turns theme labels into a shared namespace
+    that accumulates instead of fragmenting.
+    """
+    preamble = ""
+    if known_themes:
+        # The list arrives as [high-momentum themes from the DB ... labels coined
+        # earlier in this run]. Plain truncation would keep only the DB half and
+        # hide exactly the labels this run has just invented, so keep both ends:
+        # established vocabulary at the front, freshest at the back.
+        if len(known_themes) > MAX_THEME_VOCAB:
+            half = MAX_THEME_VOCAB // 2
+            shown = known_themes[:half] + known_themes[-(MAX_THEME_VOCAB - half):]
+        else:
+            shown = known_themes
+        listing = "\n".join(f"  - {name}" for name in shown)
+        preamble = (
+            "Known themes already tracked. Reuse one of these phrases verbatim "
+            "whenever the item plausibly belongs to it:\n" + listing + "\n\n"
+        )
     lines = []
     for idx, signal in enumerate(batch):
         item = signal.item
@@ -304,7 +340,7 @@ def _batch_prompt(batch: list[Signal]) -> str:
             f"[{idx}] source={item.get('source')} title={(item.get('title') or '')[:200]!r}\n"
             f"    text={snippet!r}"
         )
-    return _EXTRACTION_INSTRUCTIONS + "\n".join(lines)
+    return preamble + _EXTRACTION_INSTRUCTIONS + "\n".join(lines)
 
 
 def _apply_extraction(batch: list[Signal], parsed) -> int:
@@ -347,7 +383,7 @@ def _apply_extraction(batch: list[Signal], parsed) -> int:
     return applied
 
 
-def classify(signals: list[Signal]) -> dict:
+def classify(signals: list[Signal], known_themes: list[str] | None = None) -> dict:
     """Batched LLM classification within the free-tier budget.
 
     Ranked pre-filter first (Section 12: "pre-filter/rank/truncate evidence
@@ -381,11 +417,20 @@ def classify(signals: list[Signal]) -> dict:
         )
         selected, deferred = ranked[:capacity], list(ranked[capacity:])
 
+    # The vocabulary grows as the run proceeds. Loading it once from the DB
+    # would only help on later days: within a single run the 12 batches would
+    # each coin labels the others never see, which is how day one fragments into
+    # single-item themes even with a seeded vocabulary. Feeding each batch the
+    # labels the previous batches produced makes the namespace converge on the
+    # first day rather than the second.
+    vocabulary: list[str] = list(known_themes or [])
+    seen_labels = {v.lower() for v in vocabulary}
+
     for start in range(0, len(selected), config.LLM_BATCH_SIZE):
         batch = selected[start : start + config.LLM_BATCH_SIZE]
         try:
             raw = complete(
-                _batch_prompt(batch),
+                _batch_prompt(batch, vocabulary),
                 system=_EXTRACTION_SYSTEM,
                 purpose="extraction",
                 json_mode=True,
@@ -404,6 +449,12 @@ def classify(signals: list[Signal]) -> dict:
         stats["llm_items"] += _apply_extraction(batch, parse_json(raw, {}))
         # Any item the model skipped in its response still needs a type.
         deferred.extend(s for s in batch if s.classified_by != "llm")
+
+        for signal in batch:
+            label = (signal.theme_label or "").strip()
+            if label and label.lower() not in seen_labels:
+                seen_labels.add(label.lower())
+                vocabulary.append(label)
 
     for signal in deferred:
         _fallback_classify(signal)
@@ -467,7 +518,9 @@ def persist(signals: list[Signal], relationships: list[dict]) -> list[dict]:
     return stored
 
 
-def process(items: list[dict]) -> tuple[list[Signal], dict]:
+def process(
+    items: list[dict], known_themes: list[str] | None = None
+) -> tuple[list[Signal], dict]:
     """DEDUPLICATE + ENRICH, up to but not including theme linkage."""
     history = db.recent_raw_items(
         config.NOVELTY_LOOKBACK_DAYS,
@@ -478,6 +531,6 @@ def process(items: list[dict]) -> tuple[list[Signal], dict]:
     )
     log.info("novelty history: %d items over %dd", len(history), config.NOVELTY_LOOKBACK_DAYS)
     signals, relationships = deduplicate(items, history)
-    stats = classify(signals)
+    stats = classify(signals, known_themes)
     stats["relationships"] = relationships
     return signals, stats
