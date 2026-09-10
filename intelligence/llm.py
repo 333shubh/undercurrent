@@ -19,6 +19,10 @@ roughly 30 RPM with a much higher daily allowance. 15/day fits either with a
 large margin, which is the point -- the caps move, and this should not be
 sitting at 95% of them.
 
+Calls round-robin across every configured provider and fail over on quota,
+rate-limit, retired-model and transient network errors, so two free tiers act
+as one larger allowance and one provider's bad day does not cost the digest.
+
 Nothing here is used for scoring. Section 6 reserves the LLM for extraction/
 classification and the single daily synthesis; novelty, relevance, momentum,
 confidence and decay are deterministic code in scoring.py.
@@ -26,6 +30,7 @@ confidence and decay are deterministic code in scoring.py.
 
 from __future__ import annotations
 
+import itertools
 import json
 import logging
 import re
@@ -110,20 +115,57 @@ def get_budget() -> LLMBudget:
 # --------------------------------------------------------------- provider --
 
 
-def active_provider() -> str | None:
+def available_providers() -> list[str]:
+    """Every provider with a key, in rotation order (cheapest/fastest first).
+
+    Groq leads: measured on the extraction prompt it answers in ~1.5s against
+    Gemini's ~13.7s, and its free daily allowance is the larger of the two.
+    """
     if config.LLM_PROVIDER == "gemini":
-        return "gemini" if config.GEMINI_API_KEY else None
+        return ["gemini"] if config.GEMINI_API_KEY else []
     if config.LLM_PROVIDER == "groq":
-        return "groq" if config.GROQ_API_KEY else None
-    if config.GEMINI_API_KEY:
-        return "gemini"
+        return ["groq"] if config.GROQ_API_KEY else []
+    providers = []
     if config.GROQ_API_KEY:
-        return "groq"
-    return None
+        providers.append("groq")
+    if config.GEMINI_API_KEY:
+        providers.append("gemini")
+    return providers
+
+
+def active_provider() -> str | None:
+    providers = available_providers()
+    return providers[0] if providers else None
 
 
 def is_available() -> bool:
-    return active_provider() is not None
+    return bool(available_providers())
+
+
+# Rotation cursor. Spreading calls across providers keeps two free tiers acting
+# like one larger one instead of hammering one until it 429s.
+_rotation = itertools.count()
+
+
+def _provider_order() -> list[str]:
+    providers = available_providers()
+    if len(providers) < 2 or not config.LLM_ROTATE_PROVIDERS:
+        return providers
+    offset = next(_rotation) % len(providers)
+    return providers[offset:] + providers[:offset]
+
+
+def _is_retryable(exc: Exception) -> bool:
+    """Quota, rate limit, model-gone and transient network errors fail over.
+
+    A 400 (our malformed request) does not -- failing over on it would just make
+    the same mistake twice and burn a second provider's quota.
+    """
+    if isinstance(exc, requests.HTTPError) and exc.response is not None:
+        return exc.response.status_code in (404, 408, 409, 413, 429) or (
+            exc.response.status_code >= 500
+        )
+    return isinstance(exc, (requests.ConnectionError, requests.Timeout, LLMUnavailable))
 
 
 def _call_gemini(prompt: str, system: str, json_mode: bool) -> str:
@@ -152,6 +194,13 @@ def _call_gemini(prompt: str, system: str, json_mode: bool) -> str:
 
 
 def _call_groq(prompt: str, system: str, json_mode: bool) -> str:
+    if json_mode and "json" not in f"{system}{prompt}".lower():
+        # Groq rejects response_format=json_object outright unless the literal
+        # word "json" appears somewhere in the messages:
+        #   400 "'messages' must contain the word 'json' in some form"
+        # Our prompts happen to say it today; guaranteeing it here means a
+        # future prompt edit cannot silently take the extraction step offline.
+        system = f"{system} Respond with JSON only."
     payload = {
         "model": config.GROQ_MODEL,
         "messages": [
@@ -180,9 +229,14 @@ def complete(
     purpose: str = "extraction",
     json_mode: bool = True,
 ) -> str:
-    """One budgeted, rate-limited, logged LLM call."""
-    provider = active_provider()
-    if not provider:
+    """One budgeted, rate-limited, logged LLM call, with provider failover.
+
+    The call is charged to the budget once, no matter how many providers it
+    takes to answer -- the budget counts logical work, and the per-provider
+    attempts are what the llm_usage rows record.
+    """
+    providers = _provider_order()
+    if not providers:
         raise LLMUnavailable(
             "No LLM key configured. Set GEMINI_API_KEY (aistudio.google.com/apikey) "
             "or GROQ_API_KEY (console.groq.com/keys)."
@@ -193,44 +247,60 @@ def complete(
             f"({_budget.limits.get(purpose)} calls)"
         )
 
-    _limiter.acquire()
     _budget.spend(purpose)
-    model = config.GEMINI_MODEL if provider == "gemini" else config.GROQ_MODEL
-    started = time.perf_counter()
-    error: str | None = None
-    try:
-        text = _call_gemini(prompt, system, json_mode) if provider == "gemini" else _call_groq(
-            prompt, system, json_mode
-        )
-        return text
-    except Exception as exc:
-        error = f"{type(exc).__name__}: {exc}"[:500]
-        raise
-    finally:
-        log.info(
-            "llm %s via %s/%s in %dms%s",
-            purpose,
-            provider,
-            model,
-            int((time.perf_counter() - started) * 1000),
-            f" ERROR {error}" if error else "",
-        )
-        try:
-            import db.client as db
+    last_exc: Exception | None = None
 
-            db.log_llm_usage(
-                _budget.run_id,
-                {
-                    "provider": provider,
-                    "model": model,
-                    "purpose": purpose,
-                    "calls": 1,
-                    "ok": error is None,
-                    "error": error,
-                },
+    for attempt, provider in enumerate(providers):
+        _limiter.acquire()
+        model = config.GEMINI_MODEL if provider == "gemini" else config.GROQ_MODEL
+        started = time.perf_counter()
+        error: str | None = None
+        try:
+            if provider == "gemini":
+                text = _call_gemini(prompt, system, json_mode)
+            else:
+                text = _call_groq(prompt, system, json_mode)
+            return text
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"[:500]
+            last_exc = exc
+            if attempt + 1 < len(providers) and _is_retryable(exc):
+                log.warning(
+                    "llm %s failed on %s (%s); failing over to %s",
+                    purpose,
+                    provider,
+                    error[:160],
+                    providers[attempt + 1],
+                )
+                continue
+            raise
+        finally:
+            log.info(
+                "llm %s via %s/%s in %dms%s",
+                purpose,
+                provider,
+                model,
+                int((time.perf_counter() - started) * 1000),
+                f" ERROR {error}" if error else "",
             )
-        except Exception:
-            pass
+            try:
+                import db.client as db
+
+                db.log_llm_usage(
+                    _budget.run_id,
+                    {
+                        "provider": provider,
+                        "model": model,
+                        "purpose": purpose,
+                        "calls": 1,
+                        "ok": error is None,
+                        "error": error,
+                    },
+                )
+            except Exception:
+                pass
+
+    raise last_exc if last_exc else LLMUnavailable("no provider produced a response")
 
 
 # ------------------------------------------------------------ json utils --

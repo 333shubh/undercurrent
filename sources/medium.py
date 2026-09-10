@@ -20,7 +20,13 @@ from sources.base import (
 )
 
 SOURCE = "medium"
-MIN_SNIPPET_CHARS = 160
+# Medium's RSS summaries are short by design -- measured against the live tag
+# feeds, the median entry body is ~110 chars. A 160-char floor silently dropped
+# ~95% of items (60 fetched, 3 kept) while the feeds themselves were current,
+# which is precisely the "source silently returning zero items" failure in
+# Section 2. Lowered to admit real posts; still high enough to reject the
+# title-only stubs that carry no usable evidence.
+MIN_SNIPPET_CHARS = 70
 
 
 def _feed_name(feed_url: str) -> str:
