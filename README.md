@@ -4,9 +4,17 @@ A headless daily research radar. It collects from eight public sources, dedupes
 and scores them deterministically, tracks themes over time, and posts one
 Discord digest a day.
 
-There is no UI, no dashboard and no read API. The only output is the Discord
-message. `app.py` exposes a single internal trigger endpoint so a scheduler can
-start a run; it is not a user-facing service.
+The only output is the Discord message. `app.py` serves one public page --
+what Undercurrent is, and a link to join the Discord where the digest is
+posted -- plus an internal trigger endpoint for the scheduler. There is no
+dashboard, no login, no signup and no read API.
+
+Delivery is Discord-only by design. Readers join the server rather than
+subscribing, which means no subscriber list, no opt-in flow, no unsubscribe
+handling and no per-recipient sending cost -- a hundred readers cost exactly
+what one does. (An email version was built and then dropped: reaching
+Outlook inboxes reliably needs a verified domain with SPF/DKIM/DMARC, and
+per-user delivery adds machinery that a shared channel makes unnecessary.)
 
 Target cost: **$0/month.** Every component runs on a genuine free tier.
 
@@ -170,7 +178,8 @@ evidence behind `THEME_MATCH_THRESHOLD`. Retune against that test, not by feel.
 
 ```
 main.py              pipeline orchestration
-app.py               single trigger endpoint for the scheduler
+app.py               landing page + trigger endpoint for the scheduler
+templates/           the one public page (monospace, no framework)
 summarize.py         the one synthesis call per day + digest rendering
 deliver.py           Discord webhook, splitting, idempotency
 normalize.py         shared normalization + the one similarity method

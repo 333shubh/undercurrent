@@ -83,14 +83,48 @@ class TestPublicRoutes:
         assert resp.status_code == 200
         assert resp.get_json()["ok"] is True
 
-    def test_index_identifies_the_service(self, client):
-        body = client.get("/").get_json()
-        assert body["service"] == "undercurrent"
+    def test_index_serves_the_landing_page(self, client):
+        resp = client.get("/")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["Content-Type"]
+        body = resp.get_data(as_text=True)
+        assert "UNDERCURRENT" in body
+        assert "A daily research radar" in body
 
     def test_there_is_no_read_api(self, client):
-        """This is headless by design -- no digest/data routes exist."""
-        for path in ("/digest", "/digests", "/api", "/admin", "/signals"):
-            assert client.get(path).status_code == 404
+        """Still headless by design -- the page explains, it does not expose data."""
+        for path in ("/digest", "/digests", "/api", "/admin", "/signals", "/subscribe"):
+            assert client.get(path).status_code in (404, 405)
+
+
+class TestJoinButton:
+    """The only interactive element on the page is the Discord invite."""
+
+    def test_shows_the_invite_when_configured(self, client, monkeypatch):
+        monkeypatch.setattr(config, "DISCORD_INVITE_URL", "https://discord.gg/abc123")
+        body = client.get("/").get_data(as_text=True)
+        assert "https://discord.gg/abc123" in body
+        assert "Join the Discord" in body
+
+    def test_degrades_to_a_placeholder_when_unset(self, client, monkeypatch):
+        """An unset invite must not render a dead link."""
+        monkeypatch.setattr(config, "DISCORD_INVITE_URL", "")
+        body = client.get("/").get_data(as_text=True)
+        assert "Invite link coming soon" in body
+        assert 'href="https://discord.gg' not in body
+
+    def test_page_collects_nothing(self, client, monkeypatch):
+        """No form, no input, no address collection anywhere on the page."""
+        monkeypatch.setattr(config, "DISCORD_INVITE_URL", "https://discord.gg/abc123")
+        body = client.get("/").get_data(as_text=True).lower()
+        assert "<form" not in body
+        assert "<input" not in body
+        assert "password" not in body
+
+    def test_external_link_is_safely_targeted(self, client, monkeypatch):
+        monkeypatch.setattr(config, "DISCORD_INVITE_URL", "https://discord.gg/abc123")
+        body = client.get("/").get_data(as_text=True)
+        assert 'rel="noopener noreferrer"' in body
 
 
 class TestFlags:
