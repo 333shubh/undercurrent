@@ -48,6 +48,9 @@ _WS_RE = re.compile(r"\s+")
 _PUNCT_RE = re.compile(r"[^\w\s\-\.]", re.UNICODE)
 _TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9\-\+\.]*")
 
+# Character-level metrics never return 0 for unrelated text; see similarity().
+_SIMILARITY_FLOOR = 0.34
+
 
 # ------------------------------------------------------------------ text --
 
@@ -231,7 +234,15 @@ def similarity(a: str | None, b: str | None) -> float:
     token_score = token_set_ratio(ta, tb) / 100.0
     char_score = JaroWinkler.similarity(ta, tb)
     jac = jaccard(tokens(ta), tokens(tb))
-    return max(jac, 0.5 * token_score + 0.3 * char_score + 0.2 * jac)
+    blend = 0.5 * token_score + 0.3 * char_score + 0.2 * jac
+
+    # Two unrelated English titles still score ~0.3 on character-level metrics
+    # (shared letters, similar length). Left as-is that floor would compress
+    # novelty into a 0.3-1.0 band and make it a weak ranking signal, so rescale
+    # the blend onto a real 0-1 range. Genuine near-duplicates sit far above the
+    # NEAR_DUP_THRESHOLD either way; this only stretches the bottom end.
+    rescaled = max(0.0, (blend - _SIMILARITY_FLOOR) / (1.0 - _SIMILARITY_FLOOR))
+    return round(min(1.0, max(jac, rescaled)), 4)
 
 
 def jaccard(a: list[str], b: list[str]) -> float:
