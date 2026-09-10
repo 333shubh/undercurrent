@@ -81,6 +81,12 @@ LLM_MAX_DISAMBIGUATION_CALLS = _env_int("LLM_MAX_DISAMBIGUATION_CALLS", 2)
 LLM_MAX_RPM = _env_int("LLM_MAX_RPM", 10)
 LLM_TIMEOUT_S = _env_int("LLM_TIMEOUT_S", 90)
 
+# Gemini 3.x bills its internal reasoning against the output budget, and on a
+# structured extraction prompt that reasoning can outweigh the JSON by ~9x. At
+# 4096 a full synthesis prompt truncated mid-object and parsed to nothing --
+# a silent loss of the day's prose. Sized to leave room for both.
+LLM_MAX_OUTPUT_TOKENS = _env_int("LLM_MAX_OUTPUT_TOKENS", 16384)
+
 # ------------------------------------------------------------- collection --
 
 HTTP_TIMEOUT_S = _env_int("HTTP_TIMEOUT_S", 20)

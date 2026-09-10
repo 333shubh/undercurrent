@@ -31,14 +31,36 @@ import config
 import db.client as db
 from intelligence import scoring
 from intelligence.signals import Signal
-from normalize import similarity, slugify, to_utc
+from normalize import jaccard, similarity, slugify, to_utc, tokens
 
 log = logging.getLogger("undercurrent.themes")
 
 # A label has to look like this much of an existing theme to attach to it rather
-# than start a new one. Deliberately higher than NEAR_DUP_THRESHOLD: merging two
-# distinct themes is more damaging than carrying one duplicate for a few days.
-THEME_MATCH_THRESHOLD = 0.80
+# than start a new one.
+#
+# Originally 0.80 on full-string similarity, which proved far too strict: on a
+# real 447-item run it let "huggingface attack postmortem" and "huggingface hack
+# postmortem" become separate themes, and memory shattered into 75 single-item
+# themes with zero cross-source convergence. Theme labels are short noun
+# phrases, so a shared-token measure discriminates better than string distance
+# on them -- two labels naming the same subject nearly always share their head
+# nouns even when the modifiers differ.
+#
+# The value is calibrated, not guessed. Measured over labels taken from that
+# run (see tests/test_themes.py::TestLabelSimilarityCalibration):
+#
+#   pairs that SHOULD merge     0.355 .. 0.746
+#   pairs that MUST NOT merge   0.000 .. 0.036
+#
+# An order of magnitude separates the two classes, so the threshold sits well
+# below the weakest true match and roughly 8x above the strongest false one.
+# If this is ever retuned, retune it against that test rather than by feel.
+THEME_MATCH_THRESHOLD = 0.30
+
+# Label matching blends string similarity with token overlap. Token overlap
+# catches "x hack postmortem" vs "x attack postmortem"; string similarity
+# catches typos and pluralisation that token sets miss.
+THEME_TOKEN_WEIGHT = 0.6
 
 # Attaching a keyword-classified item to an existing theme by title alone is a
 # weaker inference, so it needs a higher bar.
@@ -91,8 +113,18 @@ class ThemeIndex:
 
     # ---------------------------------------------------------- matching --
 
+    def label_similarity(self, a: str | None, b: str | None) -> float:
+        """Similarity tuned for short theme labels, not article titles."""
+        if not a or not b:
+            return 0.0
+        overlap = jaccard(tokens(a), tokens(b))
+        string_score = similarity(a, b)
+        return round(
+            THEME_TOKEN_WEIGHT * overlap + (1.0 - THEME_TOKEN_WEIGHT) * string_score, 4
+        )
+
     def match(self, label: str | None) -> tuple[str | None, float]:
-        """Exact slug, then fuzzy name. Returns (theme_id, score)."""
+        """Exact slug, then blended token/string match. Returns (theme_id, score)."""
         if not label:
             return None, 0.0
         slug = slugify(label)
@@ -100,12 +132,24 @@ class ThemeIndex:
             return self.by_slug[slug], 1.0
         best_id, best_score = None, 0.0
         for tid, theme in self.themes.items():
-            score = similarity(label, theme.get("name"))
+            score = self.label_similarity(label, theme.get("name"))
             if score > best_score:
                 best_id, best_score = tid, score
         if best_id and best_score >= THEME_MATCH_THRESHOLD:
             return best_id, best_score
         return None, best_score
+
+    def vocabulary(self, limit: int = 60) -> list[str]:
+        """Active theme names, highest momentum first -- fed to the extractor.
+
+        Showing the model what we already track is what stops it coining a new
+        near-duplicate label for every article (see signals._batch_prompt).
+        """
+        active = [
+            t for t in self.themes.values() if t.get("status") in ("active", "decayed")
+        ]
+        active.sort(key=lambda t: float(t.get("momentum_score") or 0.0), reverse=True)
+        return [t["name"] for t in active[:limit] if t.get("name")]
 
     def match_by_title(self, title: str | None) -> tuple[str | None, float]:
         """Weaker path for items with no LLM label: does the title look like a

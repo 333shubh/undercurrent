@@ -174,7 +174,14 @@ def _call_gemini(prompt: str, system: str, json_mode: bool) -> str:
         "systemInstruction": {"parts": [{"text": system}]},
         "generationConfig": {
             "temperature": 0.2,
-            "maxOutputTokens": 4096,
+            # Gemini 3.x charges its internal reasoning against this same
+            # budget, and it is not a small share: measured on a trivial
+            # 3-item prompt it spent 345 thinking tokens to emit 40 tokens of
+            # JSON. At the old 4096 a full synthesis prompt ran out mid-object
+            # and returned truncated JSON that parsed to nothing, silently
+            # costing the digest its prose. thinkingBudget:0 is rejected by
+            # this model (400), so the budget is raised instead.
+            "maxOutputTokens": config.LLM_MAX_OUTPUT_TOKENS,
             **({"responseMimeType": "application/json"} if json_mode else {}),
         },
     }
@@ -189,8 +196,23 @@ def _call_gemini(prompt: str, system: str, json_mode: bool) -> str:
     candidates = data.get("candidates") or []
     if not candidates:
         raise LLMUnavailable(f"gemini returned no candidates: {str(data)[:300]}")
+
+    finish = candidates[0].get("finishReason")
     parts = (candidates[0].get("content") or {}).get("parts") or []
-    return "".join(p.get("text", "") for p in parts)
+    text = "".join(p.get("text", "") for p in parts)
+
+    # Truncated output is worse than no output: it parses to nothing while
+    # looking like a successful call. Raise so the caller fails over instead.
+    if finish == "MAX_TOKENS":
+        usage = data.get("usageMetadata") or {}
+        raise LLMUnavailable(
+            "gemini hit MAX_TOKENS before finishing "
+            f"(thoughts={usage.get('thoughtsTokenCount')}, "
+            f"output={usage.get('candidatesTokenCount')}); response truncated"
+        )
+    if not text.strip():
+        raise LLMUnavailable(f"gemini returned no text (finishReason={finish})")
+    return text
 
 
 def _call_groq(prompt: str, system: str, json_mode: bool) -> str:
@@ -208,7 +230,7 @@ def _call_groq(prompt: str, system: str, json_mode: bool) -> str:
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.2,
-        "max_tokens": 4096,
+        "max_tokens": config.LLM_MAX_OUTPUT_TOKENS,
         **({"response_format": {"type": "json_object"}} if json_mode else {}),
     }
     resp = requests.post(
