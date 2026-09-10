@@ -5,256 +5,412 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Undercurrent</title>
 <meta name="description" content="A daily research radar. Eight public sources, deduped and scored, one digest a day in Discord.">
+<link rel="icon" href="/static/undercurrent.png">
 <style>
-  /* Monospace, white, and almost nothing else. The motion is the only
-     decoration: short, eased, and never blocking the content. Everything
-     animated is visible by default and only *then* hidden by script, so the
-     page reads fine with JavaScript off. */
+  /* Monospace, black and white, no framework, no dependencies.
+     Two rules govern everything below:
+       1. Nothing is hidden by CSS alone. Reveals and accordions are collapsed
+          by script at runtime, so with JavaScript off the whole page reads.
+       2. Every animation is transform/opacity/filter only, so nothing here
+          triggers layout while scrolling. */
 
   :root {
     color-scheme: light;
-    --ink: #111111;
+    --ink: #0a0a0a;
     --dim: #6e6e73;
-    --line: #e8e8ed;
-    --bg: #ffffff;
-    /* Apple's easing: fast out, long gentle settle. */
+    --faint: #86868b;
+    --line: rgba(0,0,0,0.10);
     --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   * { box-sizing: border-box; }
-
-  html { scroll-behavior: smooth; }
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
 
   body {
     margin: 0;
-    background: var(--bg);
+    min-height: 100%;
     color: var(--ink);
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
     font-size: 14px;
     line-height: 1.7;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    background: #ffffff;
+    overflow-x: hidden;
   }
 
-  main { max-width: 640px; margin: 0 auto; padding: 0 24px; }
+  /* ------------------------------------------------ gradient ground ---- */
+  /* Fixed layer, so scrolling never repaints it. Two very soft grey masses
+     drifting on long loops -- present enough to feel like depth, faint
+     enough that the page still reads as white. */
 
-  /* ---------------------------------------------------------- hero ---- */
+  .ground {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background:
+      radial-gradient(1200px 800px at 12% -10%, rgba(0,0,0,0.055), transparent 62%),
+      radial-gradient(1000px 700px at 92% 8%,  rgba(0,0,0,0.040), transparent 60%),
+      radial-gradient(1100px 900px at 50% 108%, rgba(0,0,0,0.070), transparent 64%),
+      linear-gradient(180deg, #ffffff 0%, #fcfcfd 40%, #f6f6f8 100%);
+  }
+  .ground::after {
+    content: "";
+    position: absolute;
+    inset: -25%;
+    background:
+      radial-gradient(closest-side, rgba(0,0,0,0.045), transparent 70%) 20% 30% / 55% 55% no-repeat,
+      radial-gradient(closest-side, rgba(0,0,0,0.035), transparent 70%) 78% 68% / 48% 48% no-repeat;
+    animation: drift 34s var(--ease-soft) infinite alternate;
+    will-change: transform;
+  }
+  @keyframes drift {
+    0%   { transform: translate3d(0,0,0) scale(1); }
+    100% { transform: translate3d(2.5%, -2%, 0) scale(1.08); }
+  }
+
+  main { max-width: 680px; margin: 0 auto; padding: 0 24px; }
+
+  /* -------------------------------------------------------- hero ---- */
 
   .hero {
-    min-height: 78vh;
+    min-height: 88vh;
+    min-height: 88svh; /* svh avoids the mobile URL-bar jump; vh is the fallback */
     display: flex;
     flex-direction: column;
     justify-content: center;
-    padding: 80px 0 40px;
+    align-items: flex-start;
+    padding: 72px 0 48px;
   }
-  .mark {
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.34em;
-    margin: 0 0 22px;
+
+  .logo {
+    width: min(300px, 74vw);
+    height: auto;
+    display: block;
+    margin: 0 0 30px;
+    /* The mark is pure black; soften it a touch so it sits on the gradient
+       rather than punching a hole in it. */
+    opacity: 0.93;
   }
+
   .lede {
-    font-size: 21px;
-    line-height: 1.45;
-    font-weight: 400;
-    margin: 0 0 18px;
-    letter-spacing: -0.01em;
+    font-size: clamp(19px, 4.4vw, 24px);
+    line-height: 1.4;
+    letter-spacing: -0.015em;
+    margin: 0 0 16px;
+    max-width: 20ch;
   }
-  .hero .sub { color: var(--dim); margin: 0; max-width: 46ch; }
+  .sub { color: var(--dim); margin: 0; max-width: 44ch; }
 
-  .scroll-hint {
-    margin-top: 56px;
-    font-size: 11px;
-    color: var(--dim);
-    letter-spacing: 0.14em;
-  }
-  .scroll-hint span {
-    display: inline-block;
-    animation: drift 2.6s var(--ease) infinite;
-  }
-  @keyframes drift {
-    0%, 100% { transform: translateY(0); opacity: 0.5; }
-    50%      { transform: translateY(4px); opacity: 1; }
-  }
-
-  /* ------------------------------------------------------- sections ---- */
-
-  section { padding: 60px 0; border-top: 1px solid var(--line); }
-
-  h2 {
-    font-size: 11px;
-    font-weight: 700;
+  .hint {
+    margin-top: 54px;
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    color: var(--faint);
     text-transform: uppercase;
-    letter-spacing: 0.16em;
-    color: var(--dim);
-    margin: 0 0 22px;
+  }
+  .hint i { font-style: normal; display: inline-block; animation: bob 2.8s var(--ease-soft) infinite; }
+  @keyframes bob {
+    0%, 100% { transform: translateY(0); opacity: 0.45; }
+    50%      { transform: translateY(3px); opacity: 1; }
   }
 
-  p { margin: 0 0 16px; max-width: 58ch; }
-  p:last-child { margin-bottom: 0; }
+  /* --------------------------------------------------- accordion ---- */
 
-  .sources { color: var(--ink); line-height: 2.4; }
-  .sources i {
-    font-style: normal;
-    border: 1px solid var(--line);
-    padding: 5px 10px;
-    margin: 0 4px 0 0;
-    white-space: nowrap;
-    transition: border-color 0.45s var(--ease), transform 0.45s var(--ease);
-    display: inline-block;
-  }
-  .sources i:hover { border-color: var(--ink); transform: translateY(-2px); }
+  .acc { border-top: 1px solid var(--line); }
+  .acc:last-of-type { border-bottom: 1px solid var(--line); }
 
-  ul { margin: 0; padding: 0; list-style: none; }
-  li {
-    padding: 13px 0;
-    border-bottom: 1px solid var(--line);
+  .acc-head {
+    width: 100%;
     display: flex;
-    gap: 14px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 26px 2px;
+    background: none;
+    border: 0;
+    font: inherit;
+    color: var(--ink);
+    text-align: left;
+    cursor: pointer;
+    transition: opacity 0.4s var(--ease);
   }
-  li:last-child { border-bottom: 0; }
-  li b { font-weight: 400; color: var(--dim); flex: 0 0 auto; }
+  .acc-head:hover { opacity: 0.55; }
+  .acc-head:focus-visible { outline: 1px solid var(--ink); outline-offset: 4px; }
+
+  .acc-title { font-size: 15px; letter-spacing: -0.01em; }
+
+  .chev {
+    flex: 0 0 auto;
+    width: 11px; height: 11px;
+    position: relative;
+  }
+  .chev::before, .chev::after {
+    content: "";
+    position: absolute;
+    background: var(--ink);
+    transition: transform 0.55s var(--ease), opacity 0.55s var(--ease);
+  }
+  .chev::before { top: 5px; left: 0; width: 11px; height: 1px; }
+  .chev::after  { left: 5px; top: 0; width: 1px; height: 11px; }
+  .acc[data-open="true"] .chev::after { transform: rotate(90deg); opacity: 0; }
+  .acc[data-open="true"] .chev::before { transform: rotate(180deg); }
+
+  /* 0fr -> 1fr animates to auto height without measuring anything. */
+  .panel {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 0.6s var(--ease);
+  }
+  .js .panel { grid-template-rows: 0fr; }
+  .js .acc[data-open="true"] .panel { grid-template-rows: 1fr; }
+
+  .panel-inner { overflow: hidden; }
+  .panel-body {
+    padding: 0 2px 30px;
+    opacity: 1;
+    transform: none;
+    transition: opacity 0.5s var(--ease) 0.06s, transform 0.5s var(--ease) 0.06s;
+  }
+  .js .acc[data-open="false"] .panel-body { opacity: 0; transform: translateY(-6px); }
+
+  .panel-body p { margin: 0 0 14px; color: #1d1d1f; max-width: 58ch; }
+  .panel-body p:last-child { margin-bottom: 0; }
+  .panel-body .muted { color: var(--dim); }
+
+  .tags { display: flex; flex-wrap: wrap; gap: 7px; margin: 4px 0 0; }
+  .tags i {
+    font-style: normal;
+    font-size: 12px;
+    border: 1px solid var(--line);
+    border-radius: 100px;
+    padding: 5px 12px;
+    background: rgba(255,255,255,0.55);
+    transition: border-color 0.45s var(--ease), transform 0.45s var(--ease);
+  }
+  .tags i:hover { border-color: rgba(0,0,0,0.45); transform: translateY(-2px); }
+
+  ol { margin: 0; padding: 0; list-style: none; counter-reset: n; }
+  ol li {
+    counter-increment: n;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--line);
+    display: flex; gap: 14px;
+  }
+  ol li:last-child { border-bottom: 0; padding-bottom: 0; }
+  ol li::before {
+    content: counter(n, decimal-leading-zero);
+    color: var(--faint);
+    flex: 0 0 auto;
+  }
 
   pre.sample {
-    background: #fbfbfd;
+    background: rgba(255,255,255,0.62);
     border: 1px solid var(--line);
-    padding: 20px;
+    border-radius: 10px;
+    padding: 18px;
     overflow-x: auto;
     font-size: 12px;
     line-height: 1.75;
-    margin: 0;
+    margin: 14px 0 0;
     white-space: pre-wrap;
     word-break: break-word;
-    color: #1d1d1f;
   }
 
-  /* ----------------------------------------------------------- join ---- */
+  /* -------------------------------------------------------- join ---- */
 
-  .join-section { text-align: left; padding: 76px 0 100px; }
+  .join-section { padding: 96px 0 120px; text-align: center; }
+
+  .join-wrap {
+    position: relative;
+    display: inline-block;
+    isolation: isolate;
+  }
+
+  /* The void: two soft black masses behind the button, blurred and slowly
+     morphing their radii so the edge never settles into a circle. */
+  .join-wrap::before,
+  .join-wrap::after {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: -34px -46px;
+    background: radial-gradient(closest-side, rgba(0,0,0,0.55), rgba(0,0,0,0.18) 58%, transparent 76%);
+    filter: blur(22px);
+    border-radius: 46% 54% 58% 42% / 52% 44% 56% 48%;
+    animation: liquid 11s var(--ease-soft) infinite alternate;
+    will-change: transform, border-radius;
+  }
+  .join-wrap::after {
+    inset: -26px -38px;
+    background: radial-gradient(closest-side, rgba(0,0,0,0.42), transparent 72%);
+    filter: blur(30px);
+    animation: liquid 14s var(--ease-soft) infinite alternate-reverse;
+    animation-delay: -3s;
+  }
+  @keyframes liquid {
+    0% {
+      border-radius: 46% 54% 58% 42% / 52% 44% 56% 48%;
+      transform: translate3d(-4px, 2px, 0) scale(1) rotate(0deg);
+    }
+    50% {
+      border-radius: 60% 40% 44% 56% / 42% 58% 42% 58%;
+      transform: translate3d(4px, -3px, 0) scale(1.07) rotate(4deg);
+    }
+    100% {
+      border-radius: 38% 62% 52% 48% / 58% 40% 60% 42%;
+      transform: translate3d(-2px, 3px, 0) scale(1.02) rotate(-3deg);
+    }
+  }
 
   .join {
-    display: inline-block;
-    padding: 14px 26px;
-    border: 1px solid var(--ink);
-    background: var(--ink);
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 34px;
+    border-radius: 100px;
+    background: linear-gradient(180deg, #1c1c1e 0%, #000000 100%);
     color: #ffffff;
     text-decoration: none;
     font: inherit;
-    position: relative;
-    overflow: hidden;
-    transition: color 0.5s var(--ease), transform 0.5s var(--ease);
+    font-size: 14px;
+    letter-spacing: 0.01em;
+    border: 1px solid rgba(255,255,255,0.10);
+    box-shadow: 0 1px 0 rgba(255,255,255,0.16) inset, 0 10px 34px rgba(0,0,0,0.30);
+    transition: transform 0.5s var(--ease), box-shadow 0.5s var(--ease);
     will-change: transform;
   }
-  .join::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: #ffffff;
-    transform: scaleY(0);
-    transform-origin: bottom;
-    transition: transform 0.5s var(--ease);
-    z-index: 0;
-  }
-  .join span { position: relative; z-index: 1; }
-  .join:hover { color: var(--ink); transform: translateY(-2px); }
-  .join:hover::after { transform: scaleY(1); }
-  .join:active { transform: translateY(0); }
+  .join .arrow { transition: transform 0.5s var(--ease); }
+  .join:hover { transform: translateY(-2px) scale(1.015); box-shadow: 0 1px 0 rgba(255,255,255,0.2) inset, 0 16px 44px rgba(0,0,0,0.36); }
+  .join:hover .arrow { transform: translateX(4px); }
+  .join:active { transform: translateY(0) scale(0.995); }
+  .join:focus-visible { outline: 1px solid var(--ink); outline-offset: 6px; }
 
   .join.disabled {
-    background: #ffffff;
+    background: rgba(255,255,255,0.7);
     color: var(--dim);
     border-color: var(--line);
+    box-shadow: none;
     pointer-events: none;
   }
 
-  .note { font-size: 12px; color: var(--dim); margin: 20px 0 0; max-width: 52ch; }
+  .note { font-size: 12px; color: var(--dim); margin: 26px auto 0; max-width: 44ch; }
 
   footer {
     border-top: 1px solid var(--line);
-    padding: 28px 0 48px;
+    padding: 26px 0 44px;
     font-size: 11px;
-    color: var(--dim);
+    color: var(--faint);
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
   }
 
-  /* ------------------------------------------------------- reveals ---- */
-  /* Applied by script only, so no-JS visitors never see hidden content. */
+  /* ----------------------------------------------------- reveals ---- */
 
-  .js [data-reveal] {
-    opacity: 0;
-    transform: translateY(14px);
-  }
+  .js [data-reveal] { opacity: 0; transform: translateY(16px); }
   .js [data-reveal].shown {
-    opacity: 1;
-    transform: none;
-    transition: opacity 0.9s var(--ease), transform 0.9s var(--ease);
+    opacity: 1; transform: none;
+    transition: opacity 0.95s var(--ease), transform 0.95s var(--ease);
   }
 
   @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
-    .js [data-reveal],
-    .js [data-reveal].shown { opacity: 1; transform: none; transition: none; }
-    .scroll-hint span { animation: none; }
-    .join, .join::after, .sources i { transition: none; }
+    .js [data-reveal], .js [data-reveal].shown { opacity: 1; transform: none; transition: none; }
+    .ground::after, .hint i, .join-wrap::before, .join-wrap::after { animation: none; }
+    .panel { transition: none; }
+    .join, .join .arrow, .tags i, .chev::before, .chev::after { transition: none; }
   }
 
   @media (max-width: 520px) {
-    .hero { min-height: 70vh; }
-    .lede { font-size: 18px; }
-    li { flex-direction: column; gap: 2px; }
+    .hero { min-height: 82vh; min-height: 82svh; }
+    .acc-head { padding: 22px 2px; }
+    .join { padding: 15px 28px; }
   }
 </style>
 </head>
 <body>
+<div class="ground" aria-hidden="true"></div>
+
 <main>
 
   <header class="hero">
-    <p class="mark" data-reveal>UNDERCURRENT</p>
+    <img class="logo" src="/static/undercurrent.png"
+         alt="Undercurrent" width="900" height="141" data-reveal>
     <p class="lede" data-reveal>A daily research radar.</p>
     <p class="sub" data-reveal>
       Eight public sources, read every morning. One short digest of what
       actually changed.
     </p>
-    <p class="scroll-hint" data-reveal><span>↓</span></p>
+    <p class="hint" data-reveal><i>↓</i></p>
   </header>
 
-  <section>
-    <h2 data-reveal>What it is</h2>
-    <p data-reveal>
-      Not a news feed. It keeps memory across days and tracks themes over time,
-      so the interesting part is not that something was published &mdash; it is
-      that unrelated sources started pointing the same direction at once.
-    </p>
-    <p data-reveal>
-      Duplicates are collapsed before anything is counted, so the same story
-      arriving twice raises confidence without pretending to be two findings.
-    </p>
-  </section>
+  <section aria-label="About">
 
-  <section>
-    <h2 data-reveal>What it reads</h2>
-    <p class="sources" data-reveal>
-      <i>Hacker News</i><i>arXiv</i><i>GitHub</i><i>Substack</i><i>Medium</i><i>daily.dev</i><i>Reddit</i><i>X</i>
-    </p>
-  </section>
+    <div class="acc" data-open="false">
+      <button class="acc-head" type="button" aria-expanded="true" aria-controls="p1">
+        <span class="acc-title">What is Undercurrent</span>
+        <span class="chev" aria-hidden="true"></span>
+      </button>
+      <div class="panel" id="p1"><div class="panel-inner"><div class="panel-body">
+        <p>
+          A radar, not a feed. Every morning it reads eight public sources,
+          discards what it has already seen, and posts one short digest to
+          Discord.
+        </p>
+        <p class="muted">
+          It runs unattended and costs nothing to operate. There is no app to
+          open and no inbox to manage &mdash; the digest arrives in a channel.
+        </p>
+      </div></div></div>
+    </div>
 
-  <section>
-    <h2 data-reveal>What it posts</h2>
-    <ul>
-      <li data-reveal><b>01</b> Openings worth a look, and why now</li>
-      <li data-reveal><b>02</b> Open research questions</li>
-      <li data-reveal><b>03</b> Papers worth reading</li>
-      <li data-reveal><b>04</b> Trends, with the evidence behind them</li>
-      <li data-reveal><b>05</b> Small builds that would test an idea</li>
-    </ul>
-    <p class="note" data-reveal>
-      Every claim links to its sources. Anything resting on a single source
-      says so. Quiet days leave sections empty rather than padding them.
-    </p>
-  </section>
+    <div class="acc" data-open="false">
+      <button class="acc-head" type="button" aria-expanded="true" aria-controls="p2">
+        <span class="acc-title">What it is about</span>
+        <span class="chev" aria-hidden="true"></span>
+      </button>
+      <div class="panel" id="p2"><div class="panel-inner"><div class="panel-body">
+        <p>
+          Most tools tell you what was published. This one keeps memory across
+          days and tracks themes over time, so the signal is not that something
+          appeared &mdash; it is that unrelated sources started pointing the
+          same direction at once.
+        </p>
+        <p>
+          Duplicates collapse before anything is counted. The same story
+          arriving twice raises confidence without pretending to be two
+          findings, and one loud source never outweighs two quiet independent
+          ones.
+        </p>
+        <p class="muted">Reads:</p>
+        <p class="tags">
+          <i>Hacker News</i><i>arXiv</i><i>GitHub</i><i>Substack</i><i>Medium</i><i>daily.dev</i><i>Reddit</i><i>X</i>
+        </p>
+      </div></div></div>
+    </div>
 
-  <section>
-    <h2 data-reveal>A recent one</h2>
-    <pre class="sample" data-reveal>UNDERCURRENT — 2026-09-10
+    <div class="acc" data-open="false">
+      <button class="acc-head" type="button" aria-expanded="true" aria-controls="p3">
+        <span class="acc-title">What it provides</span>
+        <span class="chev" aria-hidden="true"></span>
+      </button>
+      <div class="panel" id="p3"><div class="panel-inner"><div class="panel-body">
+        <ol>
+          <li>Openings worth a look, and why now</li>
+          <li>Open research questions</li>
+          <li>Papers worth reading</li>
+          <li>Trends, with the evidence behind them</li>
+          <li>Small builds that would test an idea</li>
+        </ol>
+        <p class="muted" style="margin-top:16px">
+          Every claim links to its sources. Anything resting on a single source
+          says so. Quiet days leave sections empty rather than padding them.
+        </p>
+        <pre class="sample">UNDERCURRENT — 2026-09-10
 
 Emerging Trends
 - llm agent memory management — four items from
@@ -264,59 +420,87 @@ Emerging Trends
 Undercurrent Signals
 - New theme: ai data center power management,
   4 signals across 2 independent sources</pre>
+      </div></div></div>
+    </div>
+
   </section>
 
   <section class="join-section">
-    <h2 data-reveal>Read it</h2>
     {% if invite_url %}
-      <p data-reveal>
+      <span class="join-wrap" data-reveal>
         <a class="join" href="{{ invite_url }}" rel="noopener noreferrer" target="_blank">
-          <span>Join the Discord →</span>
+          Join the server <span class="arrow" aria-hidden="true">→</span>
         </a>
-      </p>
+      </span>
       <p class="note" data-reveal>
         One post a day, in one channel. Nothing to sign up for, no address to
         hand over, nothing sent to you directly.
       </p>
     {% else %}
-      <p data-reveal><span class="join disabled"><span>Invite link coming soon</span></span></p>
+      <span class="join-wrap" data-reveal>
+        <span class="join disabled">Invite link coming soon</span>
+      </span>
       <p class="note" data-reveal>The digest posts daily to a Discord channel.</p>
     {% endif %}
   </section>
 
-  <footer data-reveal>Undercurrent</footer>
+  <footer>
+    <span>Undercurrent</span>
+    <span>Daily, 12:45 IST</span>
+  </footer>
 
 </main>
 
 <script>
-  // Progressive enhancement: mark the document as script-capable only now, so
-  // the reveal styles above can never hide content from a visitor without JS.
+  // Progressive enhancement. The class is added at runtime, so the collapse
+  // and reveal styles can never hide content from a visitor without script.
   document.documentElement.classList.add('js');
 
   (function () {
-    var items = document.querySelectorAll('[data-reveal]');
     var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+    /* ---- accordion ---- */
+    var accs = Array.prototype.slice.call(document.querySelectorAll('.acc'));
+    accs.forEach(function (acc, i) {
+      var head = acc.querySelector('.acc-head');
+      // First panel starts open so the page is never a wall of closed rows.
+      var open = i === 0;
+      acc.setAttribute('data-open', String(open));
+      head.setAttribute('aria-expanded', String(open));
+
+      head.addEventListener('click', function () {
+        var nowOpen = acc.getAttribute('data-open') !== 'true';
+        // Exclusive: opening one closes the others, which keeps the page short
+        // and the scroll position predictable.
+        accs.forEach(function (other) {
+          if (other === acc) return;
+          other.setAttribute('data-open', 'false');
+          other.querySelector('.acc-head').setAttribute('aria-expanded', 'false');
+        });
+        acc.setAttribute('data-open', String(nowOpen));
+        head.setAttribute('aria-expanded', String(nowOpen));
+      });
+    });
+
+    /* ---- scroll reveals ---- */
+    var items = document.querySelectorAll('[data-reveal]');
     if (reduced || !('IntersectionObserver' in window)) {
       items.forEach(function (el) { el.classList.add('shown'); });
       return;
     }
-
-    var observer = new IntersectionObserver(function (entries) {
+    var obs = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {
         if (!entry.isIntersecting) return;
-        // Stagger within a group so lists cascade instead of snapping in.
-        var siblings = Array.prototype.slice.call(
+        var sibs = Array.prototype.slice.call(
           entry.target.parentNode.querySelectorAll('[data-reveal]')
         );
-        var i = Math.max(0, siblings.indexOf(entry.target));
-        entry.target.style.transitionDelay = Math.min(i * 70, 350) + 'ms';
+        var i = Math.max(0, sibs.indexOf(entry.target));
+        entry.target.style.transitionDelay = Math.min(i * 80, 400) + 'ms';
         entry.target.classList.add('shown');
-        observer.unobserve(entry.target);
+        obs.unobserve(entry.target);
       });
     }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
-
-    items.forEach(function (el) { observer.observe(el); });
+    items.forEach(function (el) { obs.observe(el); });
   })();
 </script>
 </body>
