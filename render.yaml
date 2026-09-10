@@ -1,0 +1,66 @@
+# Render blueprint (Section 9): one free web service, no paid Cron product.
+#
+# The free plan spins down after ~15 minutes idle and cold-starts on the next
+# request, which is fine here -- the service is woken once a day by the GitHub
+# Actions workflow, which pings /healthz first and only then triggers the run.
+#
+# Every value below is either public or a placeholder. Secrets are marked
+# sync:false, which makes Render prompt for them at deploy time and keeps them
+# out of the repo (Section 11: never commit secrets).
+
+services:
+  - type: web
+    name: undercurrent
+    runtime: python
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    # One worker, one thread: the pipeline holds a process-level lock and runs
+    # on a background thread, so extra workers would each carry their own lock
+    # and could start concurrent runs that double-spend the LLM budget.
+    # The long timeout covers the cold start, not the run itself -- /trigger
+    # returns 202 in milliseconds.
+    startCommand: gunicorn app:app --workers 1 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT
+    healthCheckPath: /healthz
+    autoDeploy: true
+
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12"
+
+      # --- required ---
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: DISCORD_WEBHOOK_URL
+        sync: false
+      # Must match the RENDER_TRIGGER_TOKEN GitHub Actions repo secret exactly,
+      # or /trigger returns 401 and the daily run never starts.
+      - key: RENDER_TRIGGER_TOKEN
+        sync: false
+
+      # --- LLM: set at least one. Both is better ---
+      # With two keys the pipeline round-robins across providers and fails over
+      # on quota errors, so neither free tier drains on its own.
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+
+      # --- optional sources: each skips itself, with a logged reason, if unset ---
+      - key: REDDIT_CLIENT_ID
+        sync: false
+      - key: REDDIT_CLIENT_SECRET
+        sync: false
+      - key: REDDIT_USER_AGENT
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      # X v2 reads currently require paid access; leave unset for a $0 build.
+      - key: X_BEARER_TOKEN
+        sync: false
+
+      - key: LOG_LEVEL
+        value: INFO

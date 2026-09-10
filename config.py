@@ -57,14 +57,35 @@ RENDER_TRIGGER_TOKEN = _env("RENDER_TRIGGER_TOKEN")
 # Groq free tier is ~30 RPM / much higher RPD. Both fit with room to spare.
 
 LLM_PROVIDER = _env("LLM_PROVIDER", "auto")  # auto | gemini | groq
-GEMINI_MODEL = _env("GEMINI_MODEL", "gemini-2.0-flash")
-GROQ_MODEL = _env("GROQ_MODEL", "llama-3.3-70b-versatile")
+#
+# Model ids verified against both live APIs on 2026-09-10. The previous
+# defaults (gemini-2.0-flash, llama-3.3-70b-versatile) had both been retired and
+# returned 404 -- for an unattended daily job a stale model id means no digest,
+# so these are worth re-checking whenever a run logs an LLM 404.
+#
+# Groq is listed first in the rotation: measured on the extraction prompt it
+# answered in ~1.5s against Gemini's ~13.7s, and its free daily allowance is the
+# larger of the two.
+GEMINI_MODEL = _env("GEMINI_MODEL", "gemini-3.6-flash")
+GROQ_MODEL = _env("GROQ_MODEL", "openai/gpt-oss-120b")
+
+# Round-robin across every configured provider rather than draining one. Each
+# call starts at the next provider in the ring and falls through to the others
+# on quota/rate-limit/transient errors, so two free tiers behave like one
+# larger one and a single provider outage does not cost the day's digest.
+LLM_ROTATE_PROVIDERS = _env("LLM_ROTATE_PROVIDERS", "1") not in ("0", "false", "no")
 
 LLM_BATCH_SIZE = _env_int("LLM_BATCH_SIZE", 25)
 LLM_MAX_EXTRACTION_CALLS = _env_int("LLM_MAX_EXTRACTION_CALLS", 12)
 LLM_MAX_DISAMBIGUATION_CALLS = _env_int("LLM_MAX_DISAMBIGUATION_CALLS", 2)
 LLM_MAX_RPM = _env_int("LLM_MAX_RPM", 10)
 LLM_TIMEOUT_S = _env_int("LLM_TIMEOUT_S", 90)
+
+# Gemini 3.x bills its internal reasoning against the output budget, and on a
+# structured extraction prompt that reasoning can outweigh the JSON by ~9x. At
+# 4096 a full synthesis prompt truncated mid-object and parsed to nothing --
+# a silent loss of the day's prose. Sized to leave room for both.
+LLM_MAX_OUTPUT_TOKENS = _env_int("LLM_MAX_OUTPUT_TOKENS", 16384)
 
 # ------------------------------------------------------------- collection --
 
@@ -99,7 +120,11 @@ MEDIUM_FEEDS = [
     "https://medium.com/feed/tag/robotics",
     "https://medium.com/feed/tag/climate-tech",
     "https://medium.com/feed/tag/developer-tools",
-    "https://medium.com/feed/towards-data-science",
+    # towards-data-science removed 2026-09-10: the publication left Medium, its
+    # feed's newest entry was 2025-02-03. A dead feed is worse than a missing
+    # one -- it returns 200 and looks healthy while contributing nothing.
+    "https://medium.com/feed/tag/llm",
+    "https://medium.com/feed/tag/energy",
 ]
 
 SUBSTACK_SLUGS = [
@@ -135,6 +160,16 @@ GITHUB_QUERIES = [
 ]
 GITHUB_PER_QUERY = _env_int("GITHUB_PER_QUERY", 10)
 GITHUB_LOOKBACK_DAYS = _env_int("GITHUB_LOOKBACK_DAYS", 7)
+
+# daily.dev: public GraphQL, no auth. An eighth source beyond SPEC.md Section 2,
+# added on request -- it covers practitioner-facing engineering blogs the other
+# seven miss. Its popular feed skews to consumer dev content, so the upvote
+# floor is deliberately high: this source should contribute a few strong items,
+# not bulk.
+DAILYDEV_PERIOD = _env_int("DAILYDEV_PERIOD", 1)
+DAILYDEV_LIMIT = _env_int("DAILYDEV_LIMIT", 50)
+DAILYDEV_MIN_UPVOTES = _env_int("DAILYDEV_MIN_UPVOTES", 20)
+DAILYDEV_MAX_AGE_DAYS = _env_int("DAILYDEV_MAX_AGE_DAYS", 10)
 
 X_QUERIES_PER_RUN = _env_int("X_QUERIES_PER_RUN", 2)  # Section 3: 1-3/day max
 X_RESULTS_PER_QUERY = _env_int("X_RESULTS_PER_QUERY", 20)
