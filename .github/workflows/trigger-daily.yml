@@ -1,0 +1,88 @@
+name: Trigger daily digest
+
+# The scheduler half of Section 9: GitHub Actions sends exactly one HTTP request
+# a day to the Render endpoint, which runs the pipeline. Actions is free on
+# public repos and ~2000 min/month on private ones; this job uses well under a
+# minute a day because it starts the run and leaves.
+
+on:
+  schedule:
+    # 07:15 UTC daily. Deliberately not on the hour: scheduled workflows queue
+    # behind everyone else's :00 cron, and GitHub delays them under load.
+    - cron: "15 7 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Regenerate even if today's digest was already delivered"
+        type: boolean
+        default: false
+      deliver:
+        description: "Post to Discord (uncheck for a dry run)"
+        type: boolean
+        default: true
+
+concurrency:
+  # A manual run while the scheduled one is in flight would be refused by the
+  # service anyway (409); cancelling here keeps the Actions log honest.
+  group: undercurrent-trigger
+  cancel-in-progress: false
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Wake the service and trigger a run
+        env:
+          SERVICE_URL: ${{ secrets.RENDER_SERVICE_URL }}
+          TRIGGER_TOKEN: ${{ secrets.RENDER_TRIGGER_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${SERVICE_URL:-}" ] || [ -z "${TRIGGER_TOKEN:-}" ]; then
+            echo "::error::RENDER_SERVICE_URL and RENDER_TRIGGER_TOKEN must be set as repository secrets"
+            exit 1
+          fi
+
+          # Render's free tier spins down after ~15 minutes idle, and the cold
+          # start can take 30-60s (Section 12). Warm it with the unauthenticated
+          # health check first so the trigger itself is not the request that
+          # eats the cold start and times out.
+          echo "Waking service (cold start can take up to 60s)..."
+          for attempt in 1 2 3 4 5 6; do
+            if curl -fsS --max-time 60 "${SERVICE_URL}/healthz" > /dev/null 2>&1; then
+              echo "Service is awake (attempt ${attempt})"
+              break
+            fi
+            if [ "${attempt}" -eq 6 ]; then
+              echo "::error::Service did not wake after 6 attempts"
+              exit 1
+            fi
+            echo "  not up yet, retrying in 15s..."
+            sleep 15
+          done
+
+          FORCE="${{ inputs.force && '1' || '0' }}"
+          DELIVER="${{ inputs.deliver == false && '0' || '1' }}"
+
+          echo "Triggering run (force=${FORCE} deliver=${DELIVER})..."
+          # The endpoint returns 202 immediately and runs the pipeline in the
+          # background: the digest takes minutes and nothing is gained by
+          # holding this connection open for it. Results go to Discord and
+          # run_logs regardless of what happens to this job afterwards.
+          HTTP_CODE=$(curl -sS -o /tmp/response.json -w "%{http_code}" \
+            --max-time 90 \
+            -X POST \
+            -H "Authorization: Bearer ${TRIGGER_TOKEN}" \
+            "${SERVICE_URL}/trigger?force=${FORCE}&deliver=${DELIVER}")
+
+          echo "Response (${HTTP_CODE}):"
+          cat /tmp/response.json || true
+          echo
+
+          case "${HTTP_CODE}" in
+            202) echo "Run accepted." ;;
+            409) echo "::warning::A run is already in progress; not starting another." ;;
+            401) echo "::error::Unauthorized -- RENDER_TRIGGER_TOKEN does not match the service's env var"; exit 1 ;;
+            *)   echo "::error::Unexpected response ${HTTP_CODE}"; exit 1 ;;
+          esac
