@@ -45,6 +45,12 @@ GEMINI_API_KEY = _env("GEMINI_API_KEY")
 GROQ_API_KEY = _env("GROQ_API_KEY")
 
 DISCORD_WEBHOOK_URL = _env("DISCORD_WEBHOOK_URL")
+
+# Public server invite, shown as the join button on the landing page. Delivery
+# is Discord-only: readers join the server rather than subscribing, so there is
+# no subscriber list, no opt-in flow and no per-recipient sending cost. Unset
+# renders a disabled placeholder instead of a dead link.
+DISCORD_INVITE_URL = _env("DISCORD_INVITE_URL")
 RENDER_TRIGGER_TOKEN = _env("RENDER_TRIGGER_TOKEN")
 
 # ------------------------------------------------------------ LLM budget --

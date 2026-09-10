@@ -12,8 +12,12 @@ Three routes, and each earns its place:
                   stranger who finds the URL cannot burn the day's LLM budget.
   GET  /healthz   liveness, unauthenticated. Render pings this; it touches
                   nothing and reveals nothing.
-  GET  /          plain identification, so a human who lands on the URL is not
-                  met with a 404 that looks like a broken deploy.
+  GET  /          the one public page: what Undercurrent is, and a link to
+                  join the Discord where the digest is posted.
+
+The public page exists only to explain the project and hand over the invite.
+There is still no dashboard, no login, no signup and no way to read the archive
+over HTTP -- the digest is delivered to a channel, not browsed here.
 
 The pipeline takes several minutes, which is longer than most HTTP clients will
 wait. /trigger therefore runs it on a background thread and returns 202
@@ -29,7 +33,7 @@ import os
 import threading
 from datetime import datetime, timezone
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, render_template, request
 
 import config
 import main as pipeline
@@ -81,13 +85,7 @@ def _run_in_background(force: bool, deliver_digest: bool) -> None:
 
 @app.get("/")
 def index():
-    return jsonify(
-        {
-            "service": "undercurrent",
-            "description": "headless daily research radar; output is a Discord digest",
-            "endpoints": ["POST /trigger (token required)", "GET /healthz"],
-        }
-    )
+    return render_template("index.html", invite_url=config.DISCORD_INVITE_URL or "")
 
 
 @app.get("/healthz")

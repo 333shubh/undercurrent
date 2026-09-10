@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Undercurrent</title>
+<meta name="description" content="A daily research radar. Eight public sources, deduped and scored, one digest a day in Discord.">
+<style>
+  /* Deliberately plain: system monospace, white ground, black text.
+     No gradients, no cards, no glow, no chat bubbles, no assistant voice. */
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #ffffff;
+    color: #111111;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 14px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 620px; margin: 0 auto; padding: 72px 24px 96px; }
+  h1 { font-size: 14px; font-weight: 700; margin: 0 0 4px; letter-spacing: 0.02em; }
+  .sub { color: #767676; margin: 0 0 40px; }
+  h2 {
+    font-size: 12px; font-weight: 700; margin: 36px 0 12px;
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  p { margin: 0 0 14px; }
+  ul { margin: 0 0 14px; padding-left: 18px; }
+  li { margin: 0 0 6px; }
+  .muted { color: #767676; }
+  hr { border: 0; border-top: 1px solid #e5e5e5; margin: 40px 0; }
+
+  pre.sample {
+    background: #fafafa; border: 1px solid #e5e5e5; padding: 14px;
+    overflow-x: auto; font-size: 12px; line-height: 1.6; margin: 0 0 14px;
+    white-space: pre-wrap; word-break: break-word;
+  }
+
+  .join {
+    display: inline-block; padding: 12px 22px; margin: 0 0 12px;
+    border: 1px solid #111111; background: #111111; color: #ffffff;
+    text-decoration: none; font: inherit;
+  }
+  .join:hover { background: #ffffff; color: #111111; }
+  .join[aria-disabled="true"] {
+    background: #ffffff; color: #767676; border-color: #cccccc;
+    pointer-events: none;
+  }
+
+  .note { font-size: 12px; color: #767676; margin: 0; }
+  a { color: #111111; }
+  a:hover { text-decoration: none; }
+</style>
+</head>
+<body>
+<main>
+
+  <h1>UNDERCURRENT</h1>
+  <p class="sub">A daily research radar.</p>
+
+  <p>
+    Every morning it reads eight public sources, throws away what it has
+    already seen, and posts one short digest of what actually changed.
+  </p>
+  <p>
+    It is not a news feed. It tracks themes across days, so the interesting
+    part is not that something was published &mdash; it is that unrelated
+    sources started pointing the same direction at once.
+  </p>
+
+  <h2>What it reads</h2>
+  <p class="muted">
+    Hacker News &middot; arXiv &middot; GitHub &middot; Substack &middot;
+    Medium &middot; daily.dev &middot; Reddit &middot; X
+  </p>
+
+  <h2>What it posts</h2>
+  <ul>
+    <li>Openings worth a look, and why now</li>
+    <li>Open research questions</li>
+    <li>Papers worth reading</li>
+    <li>Trends with the evidence behind them</li>
+    <li>Small builds that would test an idea</li>
+  </ul>
+  <p>
+    Every claim carries links to the sources it came from. Anything resting on
+    a single source says so. Sections are left empty on quiet days rather than
+    padded.
+  </p>
+
+  <h2>Sample</h2>
+  <pre class="sample">UNDERCURRENT — 2026-09-10
+
+Emerging Trends
+- llm agent memory management — four items from
+  arXiv and GitHub converge on shared-memory
+  approaches for agents (conf 0.68)
+
+Undercurrent Signals
+- New theme: ai data center power management,
+  4 signals across 2 independent sources</pre>
+
+  <hr>
+
+  <h2>Read it</h2>
+  {% if invite_url %}
+    <p><a class="join" href="{{ invite_url }}" rel="noopener noreferrer" target="_blank">Join the Discord</a></p>
+    <p class="note">
+      One post a day, in one channel. No account needed beyond Discord itself,
+      nothing to sign up for, and nothing is sent to you directly.
+    </p>
+  {% else %}
+    <p><span class="join" aria-disabled="true">Invite link coming soon</span></p>
+    <p class="note">
+      The digest posts daily to a Discord channel. The invite is not published
+      yet.
+    </p>
+  {% endif %}
+
+</main>
+</body>
+</html>
