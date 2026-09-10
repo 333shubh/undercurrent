@@ -230,3 +230,32 @@ create table if not exists x_query_state (
 );
 
 create index if not exists x_query_state_last_used_idx on x_query_state (last_used nulls first);
+
+-- ---------------------------------------------------------------- security --
+--
+-- Undercurrent is headless: its only client is the pipeline, authenticating with
+-- the service_role key, which bypasses RLS. Enabling RLS with *no policies* on
+-- every table therefore denies the anon and authenticated roles everything while
+-- leaving the pipeline untouched. This matters because Supabase's anon key is
+-- public by design -- without this, any holder of it could read and rewrite the
+-- entire research memory through PostgREST.
+--
+-- The Supabase linter reports these as INFO "RLS enabled, no policy". That is
+-- the intended end state here, not an oversight; do not add policies unless a
+-- non-service_role client is ever introduced.
+
+alter table raw_items      enable row level security;
+alter table entities       enable row level security;
+alter table entity_aliases enable row level security;
+alter table themes         enable row level security;
+alter table problems       enable row level security;
+alter table signals        enable row level security;
+alter table relationships  enable row level security;
+alter table observations   enable row level security;
+alter table hypotheses     enable row level security;
+alter table digests        enable row level security;
+alter table digest_items   enable row level security;
+alter table run_logs       enable row level security;
+alter table source_runs    enable row level security;
+alter table llm_usage      enable row level security;
+alter table x_query_state  enable row level security;
