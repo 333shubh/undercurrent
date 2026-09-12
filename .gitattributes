@@ -1,0 +1,5 @@
+# The workflow executes derive-flags.sh on an Ubuntu runner, where a CRLF
+# line ending is a syntax error, not a cosmetic difference. This repo is
+# developed on Windows with core.autocrlf=true, so pin the scripts explicitly
+# rather than relying on that setting being right on every clone.
+*.sh text eol=lf
