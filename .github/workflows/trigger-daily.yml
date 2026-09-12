@@ -32,6 +32,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # Needed only for .github/scripts/derive-flags.sh, so take just that
+      # directory: checkout is already shallow by default, and this keeps the
+      # step well under a second rather than cloning the repo to read 40 lines.
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+
+      - name: Derive run flags
+        id: flags
+        env:
+          FORCE_INPUT: ${{ inputs.force }}
+          DELIVER_INPUT: ${{ inputs.deliver }}
+        run: bash .github/scripts/derive-flags.sh >> "$GITHUB_OUTPUT"
+
       - name: Wake the service and trigger a run
         env:
           SERVICE_URL: ${{ secrets.RENDER_SERVICE_URL }}
@@ -62,8 +77,11 @@ jobs:
             sleep 15
           done
 
-          FORCE="${{ inputs.force && '1' || '0' }}"
-          DELIVER="${{ inputs.deliver == false && '0' || '1' }}"
+          # Derived in a previous step, not inline: see derive-flags.sh for why
+          # the `${{ }}` version quietly turned every scheduled run into a
+          # dry run.
+          FORCE="${{ steps.flags.outputs.force }}"
+          DELIVER="${{ steps.flags.outputs.deliver }}"
 
           echo "Triggering run (force=${FORCE} deliver=${DELIVER})..."
           # The endpoint returns 202 immediately and runs the pipeline in the
